@@ -1,4 +1,4 @@
-package gfx
+package dyffi
 
 import (
 	"fmt"
@@ -6,30 +6,30 @@ import (
 	"strings"
 )
 
-// GFXEngine represents the main engine
-type GFXEngine struct {
+// Engine represents the main engine of the web server
+type Engine struct {
 	routes         []Route
 	middleware     []MiddlewareFunc
 	development    bool
 	isCors         bool
-	allowedMethods []string
+	AllowedMethods []string
 	allowedOrigins []string
-	allowedHeaders []string
+	AllowedHeaders []string
 }
 
-// NewGFXEngine creates a new GFXEngine
-func NewGFXEngine() *GFXEngine {
-	return &GFXEngine{
+// NewDyffiEngine creates a new Engine
+func NewDyffiEngine() *Engine {
+	return &Engine{
 		development: false,
 	}
 }
 
 // ServeHTTP handles the request
-func (g *GFXEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (g *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	origin := r.Header.Get("Origin")
 	methodAllowed := false
 
-	for _, allowedMethod := range g.allowedMethods {
+	for _, allowedMethod := range g.AllowedMethods {
 		if r.Method == allowedMethod {
 			methodAllowed = true
 			break
@@ -39,8 +39,8 @@ func (g *GFXEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for _, allowedOrigin := range g.allowedOrigins {
 		if (allowedOrigin == origin || allowedOrigin == "*") && methodAllowed {
 			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
-			w.Header().Set("Access-Control-Allow-Methods", strings.Join(g.allowedMethods, ", "))
-			w.Header().Set("Access-Control-Allow-Headers", strings.Join(g.allowedHeaders, ", "))
+			w.Header().Set("Access-Control-Allow-Methods", strings.Join(g.AllowedMethods, ", "))
+			w.Header().Set("Access-Control-Allow-Headers", strings.Join(g.AllowedHeaders, ", "))
 			break
 		}
 	}
@@ -79,42 +79,42 @@ func (g *GFXEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (g *GFXEngine) IsDevelopment() {
+func (g *Engine) IsDevelopment() {
 	g.development = true
 }
 
 // Get adds a GET route to the engine
-func (g *GFXEngine) Get(path string, handler HandlerFunc) {
+func (g *Engine) Get(path string, handler HandlerFunc) {
 	g.addRoute("GET", path, handler, nil, nil)
 }
 
 // Post adds a POST route to the engine
-func (g *GFXEngine) Post(path string, handler HandlerFunc) {
+func (g *Engine) Post(path string, handler HandlerFunc) {
 	g.addRoute("POST", path, handler, nil, nil)
 }
 
 // Patch adds a PATCH route to the engine
-func (g *GFXEngine) Patch(path string, handler HandlerFunc) {
+func (g *Engine) Patch(path string, handler HandlerFunc) {
 	g.addRoute("PATCH", path, handler, nil, nil)
 }
 
 // Put adds a PUT route to the engine
-func (g *GFXEngine) Put(path string, handler HandlerFunc) {
+func (g *Engine) Put(path string, handler HandlerFunc) {
 	g.addRoute("PUT", path, handler, nil, nil)
 }
 
 // Delete adds a DELETE route to the engine
-func (g *GFXEngine) Delete(path string, handler HandlerFunc) {
+func (g *Engine) Delete(path string, handler HandlerFunc) {
 	g.addRoute("DELETE", path, handler, nil, nil)
 }
 
 // Options adds a OPTIONS route to the engine
-func (g *GFXEngine) Options(path string, handler HandlerFunc) {
+func (g *Engine) Options(path string, handler HandlerFunc) {
 	g.addRoute("OPTIONS", path, handler, nil, nil)
 }
 
 // Group creates a new RouteGroup
-func (g *GFXEngine) Group(basePath string) *RouteGroup {
+func (g *Engine) Group(basePath string) *RouteGroup {
 	return &RouteGroup{
 		engine:     g,
 		basePath:   basePath,
@@ -122,14 +122,14 @@ func (g *GFXEngine) Group(basePath string) *RouteGroup {
 	}
 }
 
-// Func which use for add middleware to whole engine
-func (g *GFXEngine) UseMiddleware(middleware MiddlewareFunc) {
+// UseMiddleware Func which use for add middleware to whole engine
+func (g *Engine) UseMiddleware(middleware MiddlewareFunc) {
 	g.middleware = append(g.middleware, middleware)
 }
 
 // Run starts the web
-func (g *GFXEngine) Run(addr string) error {
-	fmt.Println("GFXEngine starting with the following routes:")
+func (g *Engine) Run(addr string) error {
+	fmt.Println("Dyffi Engine starting with the following routes:")
 	for _, route := range g.routes {
 		if route.method != "OPTIONS" {
 			path := strings.Join(route.parts, "/")
@@ -143,7 +143,7 @@ func (g *GFXEngine) Run(addr string) error {
 	return http.ListenAndServe(addr, g)
 }
 
-func (g *GFXEngine) processRoute(route Route, w http.ResponseWriter, r *http.Request, requestParts []string) *Context {
+func (g *Engine) processRoute(route Route, w http.ResponseWriter, r *http.Request, requestParts []string) *Context {
 	params := make(map[string]string)
 	match := true
 
@@ -160,8 +160,8 @@ func (g *GFXEngine) processRoute(route Route, w http.ResponseWriter, r *http.Req
 
 	if match {
 		c := &Context{
-			Writer:     w,
-			Request:    r,
+			writer:     w,
+			request:    r,
 			params:     params,
 			Headers:    r.Header,
 			index:      0,
@@ -174,7 +174,7 @@ func (g *GFXEngine) processRoute(route Route, w http.ResponseWriter, r *http.Req
 }
 
 // addRoute adds a route to the engine
-func (g *GFXEngine) addRoute(method string, path string, handler HandlerFunc, middleware []MiddlewareFunc, group *RouteGroup) {
+func (g *Engine) addRoute(method string, path string, handler HandlerFunc, middleware []MiddlewareFunc, group *RouteGroup) {
 	fullPath := path
 	var fullMiddleware []MiddlewareFunc
 

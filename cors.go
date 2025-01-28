@@ -1,4 +1,4 @@
-package gfx
+package dyffi
 
 type CorsConfig struct {
 	AllowedOrigins []string
@@ -6,9 +6,9 @@ type CorsConfig struct {
 	AllowedHeaders []string
 }
 
-func (g *GFXEngine) UseCors(corsCFG CorsConfig) {
+func (g *Engine) UseCors(corsCFG CorsConfig) {
 	g.isCors = true
 	g.allowedOrigins = corsCFG.AllowedOrigins
-	g.allowedMethods = corsCFG.AllowedMethods
-	g.allowedHeaders = corsCFG.AllowedHeaders
+	g.AllowedMethods = corsCFG.AllowedMethods
+	g.AllowedHeaders = corsCFG.AllowedHeaders
 }

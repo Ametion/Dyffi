@@ -1,8 +1,8 @@
-package gfx
+package dyffi
 
 // RouteGroup represents a group of routes
 type RouteGroup struct {
-	engine     *GFXEngine
+	engine     *Engine
 	parent     *RouteGroup
 	basePath   string
 	middleware []MiddlewareFunc

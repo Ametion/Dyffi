@@ -1,4 +1,4 @@
-package gfx
+package dyffi
 
 // Route represents a HTTP route
 type Route struct {

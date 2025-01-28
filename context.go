@@ -1,4 +1,4 @@
-package gfx
+package dyffi
 
 import (
 	"encoding/json"
@@ -7,8 +7,8 @@ import (
 
 // Context represents request context
 type Context struct {
-	Writer     http.ResponseWriter
-	Request    *http.Request
+	writer     http.ResponseWriter
+	request    *http.Request
 	Headers    http.Header
 	aborted    bool
 	params     map[string]string
@@ -53,14 +53,14 @@ func (c *Context) Next() {
 	}
 }
 
-// Redirect redirects to the specific url with choosed status code
+// Redirect redirects to the specific url with chosen status code
 func (c *Context) Redirect(url string, statusCode int) {
-	http.Redirect(c.Writer, c.Request, url, statusCode)
+	http.Redirect(c.writer, c.request, url, statusCode)
 }
 
 // Query gets a query value
 func (c *Context) Query(key string) string {
-	return c.Request.URL.Query().Get(key)
+	return c.request.URL.Query().Get(key)
 }
 
 // Param gets a path parameter
@@ -70,22 +70,22 @@ func (c *Context) Param(key string) string {
 
 // PostForm gets a post form value with presented key
 func (c *Context) PostForm(key string) string {
-	if err := c.Request.ParseForm(); err != nil {
+	if err := c.request.ParseForm(); err != nil {
 		return ""
 	}
 
-	return c.Request.PostFormValue(key)
+	return c.request.PostFormValue(key)
 }
 
 func (c *Context) SetBody(v interface{}) error {
-	decoder := json.NewDecoder(c.Request.Body)
-	defer c.Request.Body.Close()
+	decoder := json.NewDecoder(c.request.Body)
+	defer c.request.Body.Close()
 	return decoder.Decode(v)
 }
 
 // SendJSON sends a SendJSON response
 func (c *Context) SendJSON(statusCode int, v interface{}) {
-	c.Writer.Header().Set("Content-Type", "application/json")
-	c.Writer.WriteHeader(statusCode)
-	json.NewEncoder(c.Writer).Encode(v)
+	c.writer.Header().Set("Content-Type", "application/json")
+	c.writer.WriteHeader(statusCode)
+	json.NewEncoder(c.writer).Encode(v)
 }
