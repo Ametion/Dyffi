@@ -3,6 +3,7 @@ package dyffi
 import (
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 )
 
@@ -47,7 +48,7 @@ func (g *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	requestParts := strings.Split(r.URL.Path, "/")
 	statusCode := http.StatusNotFound
-	params := make(map[string]string)
+	params := make(map[string]pathPart)
 
 	for _, route := range g.routes {
 		if r.Method == route.method && len(requestParts) == len(route.parts) {
@@ -138,12 +139,38 @@ func (g *Engine) Run(addr string) error {
 }
 
 func (g *Engine) processRoute(route Route, w http.ResponseWriter, r *http.Request, requestParts []string) *Context {
-	params := make(map[string]string)
+	params := make(map[string]pathPart)
 
-	// Extract route params
-	for _, i := range route.paramsIndex {
-		params[route.parts[i]] = requestParts[i]
+	for _, part := range route.parts {
+		for _, i := range route.paramsIndex {
+			if part.isParam {
+				temp := params[part.part]
+				temp.part = part.part
+				temp.isParam = true
+				temp.index = part.index
+
+				if part.index == i {
+					temp.value = requestParts[i]
+
+					if part.regexPattern != "" {
+						temp.regexPattern = "^" + part.regexPattern + "$"
+
+						matched, regexErr := regexp.MatchString(temp.regexPattern, requestParts[i])
+
+						if !matched || regexErr != nil {
+							w.WriteHeader(http.StatusBadRequest)
+							w.Write([]byte("Regex not matched"))
+							return nil
+						}
+					}
+				}
+
+				params[part.part] = temp
+			}
+		}
 	}
+
+	fmt.Println(params)
 
 	// Collect all middleware (engine -> group -> route)
 	middlewareQueue := []MiddlewareFunc{}
@@ -192,13 +219,32 @@ func (g *Engine) addRoute(method string, path string, handler HandlerFunc, middl
 
 	// Split the path into its components
 	parts := strings.Split(fullPath, "/")
+
+	pathParts := []pathPart{}
+
 	var paramsIndex []int
 
 	for i, part := range parts {
-		if strings.HasPrefix(part, ":") {
-			paramsIndex = append(paramsIndex, i)
-			parts[i] = part[1:] // Remove the ":" prefix
+		pathPart := pathPart{
+			index: i,
+			part:  part,
 		}
+
+		staticPart, regexPattern := extractPartAndRegex(part)
+		pathPart.part = staticPart
+
+		if regexPattern != "" {
+			pathPart.regexPattern = regexPattern
+		}
+
+		if strings.HasPrefix(part, ":") {
+			pathPart.isParam = true
+			paramsIndex = append(paramsIndex, i)
+			parts[i] = part[1:]
+			pathPart.part = part[1:]
+		}
+
+		pathParts = append(pathParts, pathPart)
 	}
 
 	// Create and add the new Route
@@ -206,10 +252,21 @@ func (g *Engine) addRoute(method string, path string, handler HandlerFunc, middl
 		method:      method,
 		handler:     handler,
 		middleware:  fullMiddleware,
-		parts:       parts,
+		parts:       pathParts,
 		paramsIndex: paramsIndex,
 	}
 	g.routes = append(g.routes, route)
+}
+
+func extractPartAndRegex(part string) (string, string) {
+	regexSymbols := `.*+?^$|{}[]()`
+
+	for i, char := range part {
+		if strings.ContainsRune(regexSymbols, char) {
+			return part[:i], part[i:]
+		}
+	}
+	return part, ""
 }
 
 // Helper function to remove duplicate middleware

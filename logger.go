@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func (g *Engine) logRequest(method string, statusCode int, route string, params map[string]string) {
+func (g *Engine) logRequest(method string, statusCode int, route string, params map[string]pathPart) {
 	timestamp := time.Now().Format("2006/01/02 15:04:05")
 
 	if g.development {
@@ -21,7 +21,7 @@ func (g *Engine) logRequest(method string, statusCode int, route string, params 
 		if params != nil && len(params) > 0 {
 			paramParts := []string{}
 			for key, value := range params {
-				paramParts = append(paramParts, fmt.Sprintf("\033[1;33m%s: \033[1;32m%s\033[0m", key, value))
+				paramParts = append(paramParts, fmt.Sprintf("\033[1;33m%s: \033[1;32m%s\033[0m", key, value.value))
 			}
 			paramsString = " | Params: " + strings.Join(paramParts, ", ")
 		}
@@ -46,14 +46,14 @@ func (g *Engine) logRequest(method string, statusCode int, route string, params 
 	}
 }
 
-func formatRoute(parts []string, paramsIndex []int) string {
+func formatRoute(parts []pathPart, paramsIndex []int) string {
 	formattedParts := make([]string, len(parts))
 
 	for i, part := range parts {
 		if contains(paramsIndex, i) {
-			formattedParts[i] = fmt.Sprintf("\033[1;33m:%s\033[0m", part) // Yellow for params
+			formattedParts[i] = fmt.Sprintf("\033[1;33m:%s\033[0m", part.part) // Yellow for params
 		} else {
-			formattedParts[i] = fmt.Sprintf("\033[1;34m%s\033[0m", part) // Blue for static parts
+			formattedParts[i] = fmt.Sprintf("\033[1;34m%s\033[0m", part.part) // Blue for static parts
 		}
 	}
 

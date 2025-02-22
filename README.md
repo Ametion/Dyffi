@@ -6,8 +6,8 @@ Dyffi is a lightweight, modular, and developer-friendly HTTP router for building
 
 ## Features
 
-- **Simple Routing**: Easily define routes for common HTTP methods (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`).
-- **Middleware Support**: Add global, group-specific, or route-specific middleware for extensibility.
+- **Simple Routing**: Easily define routes for common HTTP methods (GET, POST, PUT, PATCH, DELETE, OPTIONS).
+- **Regex in Routes**: Define dynamic route parameters with regex constraints to enforce specific formats for API endpoints.
 - **Route Grouping**: Organize routes logically with route groups.
 - **CORS Support**: Built-in configuration for Cross-Origin Resource Sharing.
 - **Context Handling**: Intuitive request/response utilities for JSON, query params, headers, and more.
@@ -18,7 +18,7 @@ Dyffi is a lightweight, modular, and developer-friendly HTTP router for building
 
 ## Installation
 
-Install Dyffi using `go get`:
+Install Dyffi using go get:
 
 ```bash
 go get github.com/Ametion/dyffi
@@ -116,6 +116,28 @@ engine.UseCors(dyffi.CorsConfig{
 	AllowedHeaders: []string{"Authorization", "Content-Type"},
 })
 ```
+
+---
+
+## Regex in Path Parameters
+
+Dyffi supports regex-based path parameters to enforce constraints on dynamic segments. When using regex in paths, ensure that the regex pattern is always enclosed in parentheses `()`.
+
+### Example:
+
+If you want to enforce that `id` must be a number, use:
+
+```go
+api.Get("/user/:id(^\d+$)", func(c *dyffi.Context) {
+	id := c.Param("id")
+	c.SendJSON(http.StatusOK, map[string]string{"id": id})
+})
+```
+
+- `:id(^\d+$)` ensures that `id` only contains digits.
+- If the request does not match the regex, Dyffi will return an error.
+
+This feature allows for more control over route parameters, ensuring they meet the expected format before hitting the handler.
 
 ---
 

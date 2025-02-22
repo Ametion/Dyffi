@@ -11,7 +11,7 @@ type Context struct {
 	request    *http.Request
 	Headers    http.Header
 	aborted    bool
-	params     map[string]string
+	params     map[string]pathPart
 	index      int
 	middleware []MiddlewareFunc
 	items      map[string]any
@@ -57,7 +57,7 @@ func (c *Context) Query(key string) string {
 
 // Param gets a path parameter
 func (c *Context) Param(key string) string {
-	return c.params[key]
+	return c.params[key].value
 }
 
 // PostForm gets a post form value with presented key
