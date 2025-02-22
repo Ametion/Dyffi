@@ -2,49 +2,71 @@ package dyffi
 
 import (
 	"fmt"
-	"net/http"
+	"strings"
 	"time"
 )
 
-type LoggingResponseWriter struct {
-	http.ResponseWriter
-	development bool
-	statusCode  int
-	method      string
-	route       string
-}
+func (g *Engine) logRequest(method string, statusCode int, route string, params map[string]string) {
+	timestamp := time.Now().Format("2006/01/02 15:04:05")
 
-func (l *LoggingResponseWriter) WriteHeader(statusCode int) {
-	l.statusCode = statusCode
-	l.ResponseWriter.WriteHeader(statusCode)
-}
-
-func (l *LoggingResponseWriter) Write(b []byte) (int, error) {
-	n, err := l.ResponseWriter.Write(b)
-
-	if err == nil && l.development {
-		statusColor := "\033[33m" // Default to yellow
-		if l.statusCode == 200 || l.statusCode == 201 {
-			statusColor = "\033[32m" // Green for success
-		} else if l.statusCode == 500 || l.statusCode == 400 || l.statusCode == 401 || l.statusCode == 402 || l.statusCode == 403 || l.statusCode == 404 {
-			statusColor = "\033[31m" // Red for errors
-		}
-
-		methodColor := "\033[35m" // Violet for method
-
-		// Bold text
-		bold := "\033[1m"
-
-		// Reset formatting after printing
+	if g.development {
+		// **Colorized Logging (For Dev Mode)**
+		statusColor := getStatusColor(statusCode)
+		methodColor := "\033[1;35m" // Magenta for method
+		routeColor := "\033[1;34m"  // Blue for route
 		reset := "\033[0m"
 
-		fmt.Printf("%sDate: %s, Method: %s%s%s, Status code: %s%d%s, Route: %s%s%s\n",
-			bold, time.Now().Format(time.RFC1123),
-			methodColor, l.method, reset, // Method in violet
-			statusColor, l.statusCode, reset, // Status code in green/red/yellow
-			"\033[34m", l.route, reset) // Full route in blue
+		// Format parameters only if they exist
+		var paramsString string
+		if params != nil && len(params) > 0 {
+			paramParts := []string{}
+			for key, value := range params {
+				paramParts = append(paramParts, fmt.Sprintf("\033[1;33m%s: \033[1;32m%s\033[0m", key, value))
+			}
+			paramsString = " | Params: " + strings.Join(paramParts, ", ")
+		}
 
+		// Print colorized log
+		fmt.Printf("\033[1;31m%s\033[0m | Method: %s%s%s | Status: %s%d%s | Route: %s%s%s%s\n",
+			timestamp,
+			methodColor, method, reset,
+			statusColor, statusCode, reset,
+			routeColor, route, reset,
+			paramsString,
+		)
+	} else {
+		// **Plain Logging (Production Mode)**
+		if params != nil && len(params) > 0 {
+			fmt.Printf("[%s] Method: %s | Status: %d | Route: %s | Params: %v\n",
+				timestamp, method, statusCode, route, params)
+		} else {
+			fmt.Printf("[%s] Method: %s | Status: %d | Route: %s\n",
+				timestamp, method, statusCode, route)
+		}
+	}
+}
+
+func formatRoute(parts []string, paramsIndex []int) string {
+	formattedParts := make([]string, len(parts))
+
+	for i, part := range parts {
+		if contains(paramsIndex, i) {
+			formattedParts[i] = fmt.Sprintf("\033[1;33m:%s\033[0m", part) // Yellow for params
+		} else {
+			formattedParts[i] = fmt.Sprintf("\033[1;34m%s\033[0m", part) // Blue for static parts
+		}
 	}
 
-	return n, err
+	return strings.Join(formattedParts, "/")
+}
+
+// Helper function to colorize status codes
+func getStatusColor(status int) string {
+	if status >= 200 && status < 300 {
+		return "\033[1;32m" // Green for 2xx Success
+	}
+	if status >= 400 && status < 500 {
+		return "\033[1;33m" // Yellow for 4xx Client Errors
+	}
+	return "\033[1;31m" // Red for 5xx Server Errors
 }

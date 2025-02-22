@@ -45,37 +45,28 @@ func (g *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if !methodAllowed {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		_, err := w.Write([]byte("Method not allowed"))
-		if err != nil {
-			return
-		}
-		return
-	}
-
 	requestParts := strings.Split(r.URL.Path, "/")
-	statusCode := http.StatusNotFound // Default status code
-	wrappedWriter := &LoggingResponseWriter{
-		ResponseWriter: w,
-		development:    g.development,
-		statusCode:     http.StatusOK,
-		method:         r.Method,
-		route:          r.URL.Path,
-	}
+	statusCode := http.StatusNotFound
+	params := make(map[string]string)
 
 	for _, route := range g.routes {
 		if r.Method == route.method && len(requestParts) == len(route.parts) {
-			if c := g.processRoute(route, wrappedWriter, r, requestParts); c != nil {
-				c.Next()
+			if ctx := g.processRoute(route, w, r, requestParts); ctx != nil {
 				statusCode = http.StatusOK
-				break
+				params = ctx.params
+				g.logRequest(r.Method, statusCode, r.URL.Path, params)
+				ctx.Next()
+				return
 			}
 		}
 	}
 
-	if statusCode == http.StatusNotFound {
-		http.NotFound(wrappedWriter, r)
+	if !methodAllowed {
+		statusCode = http.StatusMethodNotAllowed
+		w.WriteHeader(statusCode)
+		w.Write([]byte("Method not allowed"))
+	} else {
+		http.NotFound(w, r)
 	}
 }
 
@@ -129,48 +120,47 @@ func (g *Engine) UseMiddleware(middleware MiddlewareFunc) {
 
 // Run starts the web
 func (g *Engine) Run(addr string) error {
-	fmt.Println("Dyffi Engine starting with the following routes:")
-	for _, route := range g.routes {
-		if route.method != "OPTIONS" {
-			path := strings.Join(route.parts, "/")
-			if !strings.HasPrefix(path, "/") {
-				path = "/" + path
+	fmt.Println("\n\033[1;32mDyffi Engine starting with the following routes:\033[0m\n")
+
+	if len(g.routes) == 0 {
+		fmt.Println("\033[1;31mNo routes registered!\033[0m") // Red warning if no routes exist
+	} else {
+		for _, route := range g.routes {
+			if route.method != "OPTIONS" {
+				path := formatRoute(route.parts, route.paramsIndex)
+				fmt.Printf("  \033[1;35m%-7s\033[0m \033[1;34m%s\033[0m\n", route.method, path)
 			}
-			fmt.Printf("%s %s\n", route.method, path)
 		}
 	}
-	fmt.Printf("Listening on %s\n", addr)
+
+	fmt.Printf("\n\033[1;36mListening on %s\033[0m\n\n", addr) // Cyan color for "Listening"
 	return http.ListenAndServe(addr, g)
 }
 
 func (g *Engine) processRoute(route Route, w http.ResponseWriter, r *http.Request, requestParts []string) *Context {
 	params := make(map[string]string)
-	match := true
 
+	// Extract route params
 	for _, i := range route.paramsIndex {
 		params[route.parts[i]] = requestParts[i]
 	}
 
-	for i, part := range requestParts {
-		if i >= len(route.parts) || (part != route.parts[i] && !contains(route.paramsIndex, i)) {
-			match = false
-			break
-		}
-	}
+	// Collect all middleware (engine -> group -> route)
+	middlewareQueue := []MiddlewareFunc{}
+	middlewareQueue = append(middlewareQueue, g.middleware...)                    // Engine-level middleware
+	middlewareQueue = append(middlewareQueue, route.middleware...)                // Route-specific middleware
+	middlewareQueue = append(middlewareQueue, handlerToMiddleware(route.handler)) // Final handler
 
-	if match {
-		c := &Context{
-			writer:     w,
-			request:    r,
-			params:     params,
-			Headers:    r.Header,
-			index:      0,
-			middleware: append(route.middleware, handlerToMiddleware(route.handler)),
-		}
-		return c
+	// Create Context with middleware queue
+	ctx := &Context{
+		writer:     w,
+		request:    r,
+		params:     params,
+		Headers:    r.Header,
+		index:      0,
+		middleware: middlewareQueue, // Middleware queue including the handler
 	}
-
-	return nil
+	return ctx
 }
 
 // addRoute adds a route to the engine
