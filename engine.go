@@ -2,7 +2,9 @@ package dyffi
 
 import (
 	"fmt"
+	"github.com/graphql-go/graphql"
 	"net/http"
+	"reflect"
 	"regexp"
 	"strings"
 )
@@ -13,6 +15,7 @@ type Engine struct {
 	middleware     []MiddlewareFunc
 	development    bool
 	isCors         bool
+	graphqlSchemas GraphQLSchemas
 	AllowedMethods []string
 	allowedOrigins []string
 	AllowedHeaders []string
@@ -52,6 +55,11 @@ func (g *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	for _, route := range g.routes {
 		if r.Method == route.method && len(requestParts) == len(route.parts) {
+			if !g.matchRoute(route, requestParts) {
+				http.NotFound(w, r)
+				return
+			}
+
 			if ctx := g.processRoute(route, w, r, requestParts); ctx != nil {
 				statusCode = http.StatusOK
 				params = ctx.params
@@ -69,6 +77,26 @@ func (g *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		http.NotFound(w, r)
 	}
+}
+
+func (g *Engine) matchRoute(route Route, requestParts []string) bool {
+	// Must have same number of segments
+	if len(route.parts) != len(requestParts) {
+		return false
+	}
+
+	for i, routePart := range route.parts {
+		if routePart.isParam {
+			// Parameter segment always matches, but no static check
+			continue
+		}
+
+		// If it's a static segment, it must match exactly
+		if routePart.part != requestParts[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (g *Engine) IsDevelopment() {
@@ -105,6 +133,26 @@ func (g *Engine) Options(path string, handler HandlerFunc) {
 	g.addRoute("OPTIONS", path, handler, nil, nil)
 }
 
+// GraphQLModel creates a GraphQL route
+func (g *Engine) GraphQLModel(modelName string, model interface{}, resolvers GraphQLResolvers) {
+	if g.graphqlSchemas == nil {
+		g.graphqlSchemas = make(GraphQLSchemas)
+	}
+
+	// Store the model and its resolvers
+	g.graphqlSchemas[modelName] = &GraphQLModel{
+		ModelType: reflect.TypeOf(model),
+		Resolvers: resolvers,
+	}
+
+	// Auto-register the /graphql route the first time a model is added
+	if len(g.graphqlSchemas) == 1 {
+		g.Post("/graphql", func(c *Context) {
+			g.processGraphQLRequest(c)
+		})
+	}
+}
+
 // Group creates a new RouteGroup
 func (g *Engine) Group(basePath string) *RouteGroup {
 	return &RouteGroup{
@@ -123,13 +171,21 @@ func (g *Engine) UseMiddleware(middleware MiddlewareFunc) {
 func (g *Engine) Run(addr string) error {
 	fmt.Println("\n\033[1;32mDyffi Engine starting with the following routes:\033[0m\n")
 
-	if len(g.routes) == 0 {
-		fmt.Println("\033[1;31mNo routes registered!\033[0m") // Red warning if no routes exist
+	if len(g.routes) == 0 && len(g.graphqlSchemas) == 0 {
+		fmt.Println("\033[1;31mNo routes registered!\033[0m")
 	} else {
 		for _, route := range g.routes {
 			if route.method != "OPTIONS" {
 				path := formatRoute(route.parts, route.paramsIndex)
 				fmt.Printf("  \033[1;35m%-7s\033[0m \033[1;34m%s\033[0m\n", route.method, path)
+			}
+		}
+
+		// Print registered GraphQL models
+		if len(g.graphqlSchemas) > 0 {
+			fmt.Println("\n\033[1;33mGraphQL Models Registered:\033[0m")
+			for modelName := range g.graphqlSchemas {
+				fmt.Printf("  \033[1;36m/graphql\033[0m → Model: \033[1;32m%s\033[0m\n", modelName)
 			}
 		}
 	}
@@ -138,6 +194,122 @@ func (g *Engine) Run(addr string) error {
 	return http.ListenAndServe(addr, g)
 }
 
+// generateGraphQLSchema generates a GraphQL schema from a model and resolvers
+func (g *Engine) generateGraphQLSchema() *graphql.Schema {
+	queryFields := graphql.Fields{}
+	mutationFields := graphql.Fields{}
+
+	for modelName, model := range g.graphqlSchemas {
+		modelType := model.ModelType
+
+		// Generate object type
+		fields := graphql.Fields{}
+		for i := 0; i < modelType.NumField(); i++ {
+			field := modelType.Field(i)
+			fields[field.Name] = &graphql.Field{Type: g.goTypeToGraphQL(field.Type)}
+		}
+
+		objectType := graphql.NewObject(graphql.ObjectConfig{
+			Name:   modelName,
+			Fields: fields,
+		})
+
+		// Query Resolver
+		if model.Resolvers.Query != nil {
+			queryFields["get"+modelName] = &graphql.Field{
+				Type: objectType,
+				Args: graphql.FieldConfigArgument{"id": &graphql.ArgumentConfig{Type: graphql.Int}},
+				Resolve: func(params graphql.ResolveParams) (interface{}, error) {
+					return model.Resolvers.Query(QLContext{Params: params})
+				},
+			}
+		}
+
+		// Create Mutation Resolver
+		if model.Resolvers.MutationCreate != nil {
+			mutationFields["create"+modelName] = &graphql.Field{
+				Type: objectType,
+				Args: fieldsToArgs(fields),
+				Resolve: func(params graphql.ResolveParams) (interface{}, error) {
+					return model.Resolvers.MutationCreate(QLContext{Params: params})
+				},
+			}
+		}
+
+		// Delete Mutation Resolver
+		if model.Resolvers.MutationDelete != nil {
+			mutationFields["delete"+modelName] = &graphql.Field{
+				Type: graphql.NewObject(graphql.ObjectConfig{
+					Name: "DeleteResponse",
+					Fields: graphql.Fields{
+						"message": &graphql.Field{Type: graphql.String},
+						"ID":      &graphql.Field{Type: graphql.Int},
+					},
+				}),
+				Args: graphql.FieldConfigArgument{"id": &graphql.ArgumentConfig{Type: graphql.Int}},
+				Resolve: func(params graphql.ResolveParams) (interface{}, error) {
+					return model.Resolvers.MutationDelete(QLContext{Params: params})
+				},
+			}
+		}
+	}
+
+	// Generate Final Schema
+	schema, _ := graphql.NewSchema(graphql.SchemaConfig{
+		Query:    graphql.NewObject(graphql.ObjectConfig{Name: "Query", Fields: queryFields}),
+		Mutation: graphql.NewObject(graphql.ObjectConfig{Name: "Mutation", Fields: mutationFields}),
+	})
+
+	return &schema
+}
+
+// processGraphQLRequest processes a GraphQL request
+func (g *Engine) processGraphQLRequest(c *Context) {
+	var request struct {
+		Query     string                 `json:"query"`
+		Variables map[string]interface{} `json:"variables"`
+	}
+
+	if err := c.SetBody(&request); err != nil {
+		c.SendJSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+		return
+	}
+
+	// Use merged schema
+	schema := g.generateGraphQLSchema()
+	result := graphql.Do(graphql.Params{
+		Schema:         *schema,
+		RequestString:  request.Query,
+		VariableValues: request.Variables,
+	})
+
+	c.SendJSON(http.StatusOK, result)
+}
+
+// goTypeToGraphQL converts a Go type to a GraphQL scalar
+func (g *Engine) goTypeToGraphQL(t reflect.Type) *graphql.Scalar {
+	switch t.Kind() {
+	case reflect.Int, reflect.Int32, reflect.Int64:
+		return graphql.Int
+	case reflect.String:
+		return graphql.String
+	case reflect.Bool:
+		return graphql.Boolean
+	default:
+		return graphql.String
+	}
+}
+
+// fieldToArgs converts a map of fields to a GraphQL argument map
+func fieldsToArgs(fields graphql.Fields) graphql.FieldConfigArgument {
+	args := graphql.FieldConfigArgument{}
+	for name, field := range fields {
+		args[name] = &graphql.ArgumentConfig{Type: field.Type}
+	}
+	return args
+}
+
+// processRoute processes a route
 func (g *Engine) processRoute(route Route, w http.ResponseWriter, r *http.Request, requestParts []string) *Context {
 	params := make(map[string]pathPart)
 
@@ -153,7 +325,7 @@ func (g *Engine) processRoute(route Route, w http.ResponseWriter, r *http.Reques
 					temp.value = requestParts[i]
 
 					if part.regexPattern != "" {
-						temp.regexPattern = "^" + part.regexPattern + "$"
+						temp.regexPattern = part.regexPattern
 
 						matched, regexErr := regexp.MatchString(temp.regexPattern, requestParts[i])
 
@@ -169,8 +341,6 @@ func (g *Engine) processRoute(route Route, w http.ResponseWriter, r *http.Reques
 			}
 		}
 	}
-
-	fmt.Println(params)
 
 	// Collect all middleware (engine -> group -> route)
 	middlewareQueue := []MiddlewareFunc{}
@@ -241,7 +411,11 @@ func (g *Engine) addRoute(method string, path string, handler HandlerFunc, middl
 			pathPart.isParam = true
 			paramsIndex = append(paramsIndex, i)
 			parts[i] = part[1:]
-			pathPart.part = part[1:]
+			if pathPart.regexPattern == "" {
+				pathPart.part = part[1:]
+			}
+
+			pathPart.part = pathPart.part[1:]
 		}
 
 		pathParts = append(pathParts, pathPart)
