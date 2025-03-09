@@ -15,16 +15,21 @@ type Engine struct {
 	middleware     []MiddlewareFunc
 	development    bool
 	isCors         bool
+	graphqlUsage   bool
 	graphqlSchemas GraphQLSchemas
 	AllowedMethods []string
 	allowedOrigins []string
 	AllowedHeaders []string
+
+	authConf interface{}
 }
 
 // NewDyffiEngine creates a new Engine
 func NewDyffiEngine() *Engine {
 	return &Engine{
-		development: false,
+		development:  false,
+		isCors:       false,
+		graphqlUsage: false,
 	}
 }
 
@@ -55,17 +60,14 @@ func (g *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	for _, route := range g.routes {
 		if r.Method == route.method && len(requestParts) == len(route.parts) {
-			if !g.matchRoute(route, requestParts) {
-				http.NotFound(w, r)
-				return
-			}
-
-			if ctx := g.processRoute(route, w, r, requestParts); ctx != nil {
-				statusCode = http.StatusOK
-				params = ctx.params
-				g.logRequest(r.Method, statusCode, r.URL.Path, params)
-				ctx.Next()
-				return
+			if g.matchRoute(route, requestParts) {
+				if ctx := g.processRoute(route, w, r, requestParts); ctx != nil {
+					statusCode = http.StatusOK
+					params = ctx.params
+					g.logRequest(r.Method, statusCode, r.URL.Path, params)
+					ctx.Next()
+					return
+				}
 			}
 		}
 	}
@@ -77,6 +79,7 @@ func (g *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		http.NotFound(w, r)
 	}
+
 }
 
 func (g *Engine) matchRoute(route Route, requestParts []string) bool {
@@ -135,6 +138,8 @@ func (g *Engine) Options(path string, handler HandlerFunc) {
 
 // GraphQLModel creates a GraphQL route
 func (g *Engine) GraphQLModel(modelName string, model interface{}, resolvers GraphQLResolvers) {
+	g.graphqlUsage = true
+
 	if g.graphqlSchemas == nil {
 		g.graphqlSchemas = make(GraphQLSchemas)
 	}
@@ -350,12 +355,13 @@ func (g *Engine) processRoute(route Route, w http.ResponseWriter, r *http.Reques
 
 	// Create Context with middleware queue
 	ctx := &Context{
-		writer:     w,
-		request:    r,
-		params:     params,
-		Headers:    r.Header,
-		index:      0,
-		middleware: middlewareQueue, // Middleware queue including the handler
+		writer:                     w,
+		request:                    r,
+		params:                     params,
+		Headers:                    r.Header,
+		index:                      0,
+		middleware:                 middlewareQueue,
+		authorizationConfiguration: g.authConf,
 	}
 	return ctx
 }

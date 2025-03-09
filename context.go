@@ -2,19 +2,43 @@ package dyffi
 
 import (
 	"encoding/json"
+	"github.com/dgrijalva/jwt-go"
 	"net/http"
+	"time"
 )
+
+type JWTClaims struct {
+	Data any `json:"data"`
+	jwt.StandardClaims
+}
 
 // Context represents request context
 type Context struct {
-	writer     http.ResponseWriter
-	request    *http.Request
-	Headers    http.Header
-	aborted    bool
-	params     map[string]pathPart
-	index      int
-	middleware []MiddlewareFunc
-	items      map[string]any
+	writer                     http.ResponseWriter
+	request                    *http.Request
+	Headers                    http.Header
+	aborted                    bool
+	params                     map[string]pathPart
+	index                      int
+	middleware                 []MiddlewareFunc
+	items                      map[string]any
+	authorizationConfiguration interface{}
+}
+
+func (c *Context) LoginJWT(data any) (string, error) {
+	jwtAuth := c.authorizationConfiguration.(JWTAuth)
+
+	expirationTime := time.Now().Add(jwtAuth.ExpireAt)
+
+	claims := &JWTClaims{
+		Data: data,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expirationTime.Unix(),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(jwtAuth.JWTSecret))
 }
 
 // Set choosed item by choosed index
