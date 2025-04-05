@@ -2,6 +2,8 @@ package dyffi
 
 import (
 	"encoding/json"
+	"fmt"
+	dyffiBroker "github.com/Ametion/dyffi/broker"
 	"github.com/dgrijalva/jwt-go"
 	"net/http"
 	"time"
@@ -22,6 +24,7 @@ type Context struct {
 	index                      int
 	middleware                 []MiddlewareFunc
 	items                      map[string]any
+	queueBroker                dyffiBroker.Queue
 	authorizationConfiguration interface{}
 }
 
@@ -39,6 +42,14 @@ func (c *Context) LoginJWT(data any) (string, error) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(jwtAuth.JWTSecret))
+}
+
+func (c *Context) PublishToQueue(topic string, message []byte, params dyffiBroker.DefaultParams) error {
+	if c.queueBroker == nil {
+		return fmt.Errorf("queue broker is not initialized")
+	}
+
+	return c.queueBroker.Publish(topic, message, params)
 }
 
 // Set choosed item by choosed index

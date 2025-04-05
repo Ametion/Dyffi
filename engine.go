@@ -2,6 +2,7 @@ package dyffi
 
 import (
 	"fmt"
+	dyffiBroker "github.com/Ametion/dyffi/broker"
 	"github.com/graphql-go/graphql"
 	"net/http"
 	"reflect"
@@ -21,7 +22,9 @@ type Engine struct {
 	allowedOrigins []string
 	AllowedHeaders []string
 
-	authConf interface{}
+	broker       *dyffiBroker.Queue
+	brokerConfig dyffiBroker.BrokerConfig
+	authConf     interface{}
 }
 
 // NewDyffiEngine creates a new Engine
@@ -170,6 +173,19 @@ func (g *Engine) Group(basePath string) *RouteGroup {
 // UseMiddleware Func which use for add middleware to whole engine
 func (g *Engine) UseMiddleware(middleware MiddlewareFunc) {
 	g.middleware = append(g.middleware, middleware)
+}
+
+func (g *Engine) UseBroker(brokerConfig dyffiBroker.BrokerConfig) {
+	g.brokerConfig = brokerConfig
+
+	broker, err := dyffiBroker.CreateNewBroker(brokerConfig)
+
+	if err != nil {
+		fmt.Println("Error creating broker:", err)
+		return
+	}
+
+	g.broker = &broker
 }
 
 // Run starts the web
@@ -353,7 +369,11 @@ func (g *Engine) processRoute(route Route, w http.ResponseWriter, r *http.Reques
 	middlewareQueue = append(middlewareQueue, route.middleware...)                // Route-specific middleware
 	middlewareQueue = append(middlewareQueue, handlerToMiddleware(route.handler)) // Final handler
 
-	// Create Context with middleware queue
+	var broker dyffiBroker.Queue
+	if g.broker != nil {
+		broker = *g.broker
+	}
+
 	ctx := &Context{
 		writer:                     w,
 		request:                    r,
@@ -361,8 +381,10 @@ func (g *Engine) processRoute(route Route, w http.ResponseWriter, r *http.Reques
 		Headers:                    r.Header,
 		index:                      0,
 		middleware:                 middlewareQueue,
+		queueBroker:                broker,
 		authorizationConfiguration: g.authConf,
 	}
+
 	return ctx
 }
 
