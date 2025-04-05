@@ -17,7 +17,6 @@ type KafkaParams struct {
 	Offset    *int64
 	Headers   []kafka.Header
 	Timeout   *time.Time
-	Params    map[string]interface{}
 }
 
 func (k KafkaParams) GetQueueType() QueueType {

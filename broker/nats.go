@@ -14,7 +14,6 @@ type NatsParams struct {
 	Subject *string
 	Timeout *time.Duration
 	Headers nats.Header
-	Params  map[string]interface{}
 }
 
 func (n NatsParams) GetQueueType() QueueType {

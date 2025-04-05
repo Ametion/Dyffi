@@ -9,9 +9,17 @@ import (
 	"github.com/dgrijalva/jwt-go"
 )
 
+type AuthType string
+
+const (
+	JWT    AuthType = "JWT"
+	APIKEY AuthType = "APIKey"
+	BASIC  AuthType = "Basic"
+)
+
 // APIAuthorization holds your global auth settings.
 type APIAuthorization struct {
-	AuthorizationType string
+	AuthorizationType AuthType
 	ExcludedRoutes    []string
 }
 
@@ -52,7 +60,7 @@ func (g *Engine) Authorization(auth APIAuthorization, conf interface{}) {
 		}
 
 		switch auth.AuthorizationType {
-		case "JWT":
+		case JWT:
 			jwtConf, ok := conf.(JWTAuth)
 			if !ok {
 				http.Error(c.writer, "Invalid JWT configuration", http.StatusInternalServerError)
@@ -60,7 +68,7 @@ func (g *Engine) Authorization(auth APIAuthorization, conf interface{}) {
 			}
 			handleJWTAuth(c, jwtConf)
 
-		case "APIKey":
+		case APIKEY:
 			apiKeyConf, ok := conf.(APIKeyAuth)
 			if !ok {
 				http.Error(c.writer, "Invalid APIKey configuration", http.StatusInternalServerError)
@@ -68,7 +76,7 @@ func (g *Engine) Authorization(auth APIAuthorization, conf interface{}) {
 			}
 			handleAPIKeyAuth(c, apiKeyConf)
 
-		case "Basic":
+		case BASIC:
 			basicConf, ok := conf.(BasicAuth)
 			if !ok {
 				http.Error(c.writer, "Invalid BasicAuth configuration", http.StatusInternalServerError)

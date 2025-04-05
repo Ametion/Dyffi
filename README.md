@@ -65,11 +65,16 @@ func main() {
 }
 ```
 
+All REST examples you can find [here](https://github.com/Ametion/Dyffi/tree/dev/examples/rest)
+
+
 ---
 
 # GraphQL Support
 
 Dyffi natively supports **GraphQL APIs**, allowing you to define schemas and resolvers easily.
+
+#### Full example [here](https://github.com/Ametion/Dyffi/tree/dev/brokers/examples/graphql).
 
 ### **🔹 Quick GraphQL Example**
 
@@ -80,44 +85,8 @@ import (
 	"github.com/Ametion/dyffi"
 )
 
-// Define User struct
-type User struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
-	Age  int    `json:"age"`
-}
-
-// Define Post struct
-type Post struct {
-	ID      int    `json:"id"`
-	Title   string `json:"title"`
-	Content string `json:"content"`
-}
-
-// GraphQL Query Resolvers
-
-func UserQueryResolver(ctx dyffi.QLContext) (interface{}, error) {
-	id := ctx.ArgInt("id")
-	return User{ID: id, Name: "John Doe", Age: 25}, nil
-}
-
-func PostQueryResolver(ctx dyffi.QLContext) (interface{}, error) {
-	id := ctx.ArgInt("id")
-	return Post{ID: id, Title: "GraphQL in Go", Content: "Building GraphQL APIs with Dyffi."}, nil
-}
-
-func PostMutationCreate(ctx dyffi.QLContext) (interface{}, error) {
-	return Post{ID: ctx.ArgInt("ID"), Title: ctx.ArgString("Title"), Content: ctx.ArgString("Content")}, nil
-}
-
-
 func main() {
 	engine := dyffi.NewDyffiEngine()
-
-	// Register GraphQL API
-	engine.GraphQLModel("User", User{}, dyffi.GraphQLResolvers{
-		Query:          UserQueryResolver,
-	})
 
 	// Register GraphQL API
 	engine.GraphQLModel("Post", Post{}, dyffi.GraphQLResolvers{
@@ -134,22 +103,22 @@ func main() {
 
 #### **Query Example**
 ```graphql
-query {
-  getUser(id: 1) {
-    ID
-    Name
-    Age
-  }
+query GetPost {
+    getPost(id: 1) {
+        Content
+        ID
+        Title
+    }
 }
 ```
 ### **Expected Response:**
 ```json
 {
   "data": {
-    "getUser": {
+    "getPost": {
+      "Content": "Building GraphQL APIs with Dyffi.",
       "ID": 1,
-      "Name": "John Doe",
-      "Age": 25
+      "Title": "GraphQL in Go"
     }
   }
 }
@@ -191,9 +160,9 @@ mutation CreatePost {
 #### Dyffi now supports **automatic authentication** middleware, allowing you to secure routes with **JWT tokens**, **API keys**, and **Basic Auth**.
 
 ## **Supported Authentication Methods**
-1. **JWT Authentication** – Uses JSON Web Tokens (JWT) for user sessions.
-2. **API Key Authentication** – Uses an API key sent via headers.
-3. **Basic Authentication** – Requires a username and password.
+1. **JWT Authentication** – Uses JSON Web Tokens (JWT) for user sessions, full example [here](https://github.com/Ametion/Dyffi/tree/dev/examples/auth/jwtAuth.go).
+2. **API Key Authentication** – Uses an API key sent via headers, full example [here](https://github.com/Ametion/Dyffi/tree/dev/examples/auth/apiKeyAuth.go).
+3. **Basic Authentication** – Requires a username and password, full example [here](https://github.com/Ametion/Dyffi/tree/dev/examples/auth/basicAuth.go).
 
 ### **Setup Example**
 
@@ -210,7 +179,7 @@ func main() {
 
     // Define authentication configurations
     auth := dyffi.APIAuthorization{
-        AuthorizationTypes: "JWT", // can be "JWT", "APIKey", "Basic"
+        AuthorizationType: dyffi.JWT,
         ExcludedRoutes:    []string{"/login", "/register"},
     }
 
@@ -219,65 +188,10 @@ func main() {
         JWTSecret: "some_secret_key",
         ExpireAt:  24 * time.Hour,
     }
-
-    //Configuration for API Key
-    authConf := dyffi.APIKeyAuth{
-        APIKey: "some_api_key",
-    }
-
-    //Configuration for Basic Auth
-    authConf := dyffi.BasicAuth{
-        Username: "admin",
-        Password: "admin",
-    }
 	
     //apply authentication to engine
     engine.Authorization(auth, authConf)
 }
-```
-
----
-
-## JWT Authentication Example
-
-## **Login Route (Token Generation)**
-
-```go
-engine.Post("/login", func(c *dyffi.Context) {
-    username := c.PostForm("username")
-    password := c.PostForm("password")
-
-    // (Assume credentials are valid for now) 
-    accessToken, err := context.LoginJWT(map[string]interface{}{"data": "some_data"})
-    if err != nil {
-        context.SendJSON(500, "Internal Server Error")
-        return
-    }
-
-    c.SendJSON(200, map[string]string{"access_token": token})
-})
-```
-
-## **Get Data from Token on Protected Route**
-
-```go
-engine.Get("/some_route", func(c *dyffi.Context) {
-    claims := context.GetItem("claims") //here is saved whole data from token
-    
-    fmt.Println(claims) //will be printed map with data
-	
-	//some logic here
-	
-    c.SendJSON(200, "Protected content")
-})
-```
-
-## **Making a Secure Request**
-
-Include the token in the `Authorization` header:
-
-```
-Authorization: Bearer <your-token>
 ```
 
 ---
@@ -299,6 +213,8 @@ auth := dyffi.APIAuthorization{
 Dyffi supports **brokers** for message queuing and event-driven architectures. You can use brokers like **RabbitMQ**, **Kafka**, or **Nats** to send message to your brokers/queues.
 
 For start using brokers inside your router you need to create broker config and pass it to `engine.UseBroker()` method. Otherwise, it will not work.
+
+All examples for all supported brokers are available [here](https://github.com/Ametion/Dyffi/tree/dev/examples/brokers)
 
 ### **Example with Kafka**
 
@@ -354,6 +270,8 @@ func main() {
 
 Use middleware to extend functionality, such as authentication, logging, or modifying requests:
 
+[Full Example](https://github.com/Ametion/Dyffi/tree/dev/examples/rest/middleware_usage.go)
+
 ```go
 engine.UseMiddleware(func(c *dyffi.Context) {
 	c.writer.Header().Set("X-Powered-By", "Dyffi")
@@ -364,6 +282,8 @@ engine.UseMiddleware(func(c *dyffi.Context) {
 # **Route Grouping**
 
 Group related routes together for better organization:
+
+[Full Example](https://github.com/Ametion/Dyffi/tree/dev/examples/rest/routerGrouping_usage.go)
 
 ```go
 api := engine.Group("/api")
@@ -381,6 +301,9 @@ api.Get("/users", func(c *dyffi.Context) {
 
 Enable CORS to control access for different origins:
 
+[Full Example](https://github.com/Ametion/Dyffi/tree/dev/examples/rest/cors_usage.go)
+
+
 ```go
 engine.UseCors(dyffi.CorsConfig{
 	AllowedOrigins: []string{"*"}, // Allow all origins
@@ -395,10 +318,26 @@ engine.UseCors(dyffi.CorsConfig{
 
 Dyffi supports regex-based path parameters to enforce constraints on dynamic segments. *You need to put regex into "()" brackets.*
 
+[Full Example](https://github.com/Ametion/Dyffi/tree/dev/examples/rest/regex_usage.go)
+
 ```go
 api.Get("/user/:id(^\d+$)", func(c *dyffi.Context) {
 	id := c.Param("id")
 	c.SendJSON(http.StatusOK, map[string]string{"id": id})
+})
+```
+
+# Context Storage
+
+Dyffi provides a context storage mechanism to store and retrieve data during request processing. This is useful for sharing data between middleware and handlers.
+
+[Full Example](https://github.com/Ametion/Dyffi/tree/dev/examples/rest/contextStorage_usage.go)
+
+```go
+engine.Get("/user/:id", func(c *dyffi.Context) {
+    userID := c.GetItem("userID")
+	
+    c.SendJSON(http.StatusOK, map[string]string{"userID": userID})
 })
 ```
 

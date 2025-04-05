@@ -13,20 +13,15 @@ type rabbitMQBroker struct {
 type RabbitMQParams struct {
 	Exchange    *string
 	RoutingKey  *string
-	Mandatory   bool
-	Immediate   bool
+	Mandatory   *bool
+	Immediate   *bool
 	Expiration  *string
 	ContentType *string
 	Timeout     *time.Time
-	Params      map[string]interface{}
 }
 
 func (r RabbitMQParams) GetQueueType() QueueType {
 	return RabbitMQ
-}
-
-func (r RabbitMQParams) GetParams() map[string]interface{} {
-	return r.Params
 }
 
 func (r *rabbitMQBroker) Publish(topic string, message []byte, params DefaultParams) error {
@@ -75,6 +70,16 @@ func (r *rabbitMQBroker) Publish(topic string, message []byte, params DefaultPar
 		routingKey = *rabbitParams.RoutingKey
 	}
 
+	mandatory := false
+	if rabbitParams.Mandatory != nil {
+		mandatory = *rabbitParams.Mandatory
+	}
+
+	immediate := false
+	if rabbitParams.Immediate != nil {
+		immediate = *rabbitParams.Immediate
+	}
+
 	contentType := "text/plain"
 	if rabbitParams.ContentType != nil {
 		contentType = *rabbitParams.ContentType
@@ -88,8 +93,8 @@ func (r *rabbitMQBroker) Publish(topic string, message []byte, params DefaultPar
 	err = ch.Publish(
 		exchange,
 		routingKey,
-		rabbitParams.Mandatory,
-		rabbitParams.Immediate,
+		mandatory,
+		immediate,
 		amqp.Publishing{
 			ContentType: contentType,
 			Body:        message,

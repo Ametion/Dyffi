@@ -1,6 +1,9 @@
 package dyffiBroker
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 type QueueType string
 
@@ -24,6 +27,30 @@ type Queue interface {
 
 type DefaultParams interface {
 	GetQueueType() QueueType
+}
+
+func String(s string) *string {
+	return &s
+}
+
+func Int(i int) *int {
+	return &i
+}
+
+func Int64(i int64) *int64 {
+	return &i
+}
+
+func Bool(b bool) *bool {
+	return &b
+}
+
+func Time(t time.Time) *time.Time {
+	return &t
+}
+
+func Duration(d time.Duration) *time.Duration {
+	return &d
 }
 
 func CreateNewBroker(conf BrokerConfig) (Queue, error) {
