@@ -74,7 +74,7 @@ All REST examples you can find [here](https://github.com/Ametion/Dyffi/tree/dev/
 
 Dyffi natively supports **GraphQL APIs**, allowing you to define schemas and resolvers easily.
 
-#### Full example [here](https://github.com/Ametion/Dyffi/tree/dev/brokers/examples/graphql).
+#### Full example [here](https://github.com/Ametion/Dyffi/tree/dev/examples/graphql).
 
 ### **🔹 Quick GraphQL Example**
 
