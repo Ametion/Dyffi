@@ -284,7 +284,7 @@ Authorization: Bearer <your-token>
 
 # **Route Protection & Exclusions**
 
-By default, authentication is **required for all routes** except those **explicitly excluded** in `ExcludedRoutes`.
+By default if you are using any auth type, authentication is **required for all routes** except those **explicitly excluded** in `ExcludedRoutes`.
 
 ```go
 auth := dyffi.APIAuthorization{
@@ -292,6 +292,61 @@ auth := dyffi.APIAuthorization{
     ExcludedRoutes:    []string{"/login", "/register"},
 }
 ```
+
+---
+
+# **Brokers**
+Dyffi supports **brokers** for message queuing and event-driven architectures. You can use brokers like **RabbitMQ**, **Kafka**, or **Nats** to send message to your brokers/queues.
+
+For start using brokers inside your router you need to create broker config and pass it to `engine.UseBroker()` method. Otherwise, it will not work.
+
+### **Example with Kafka**
+
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/Ametion/dyffi"
+	dyffiBroker "github.com/Ametion/dyffi/broker"
+)
+
+func main() {
+	brokerConf := dyffiBroker.BrokerConfig{
+		BrokerType: dyffiBroker.Kafka,
+		Host:       "localhost",
+		Port:       "9092",
+	}
+
+	engine := dyffi.NewDyffiEngine()
+	
+
+	engine.UseBroker(brokerConf)
+
+	engine.IsDevelopment()
+
+	engine.Post("/someRoute", func(context *dyffi.Context) {
+		//This line will send message "test message" to Kafka "test_topic" topic, note, it will not automatically create topic!.
+		err := context.PublishToQueue("test_topic", []byte("test message"), dyffiBroker.KafkaParams{})
+
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+
+		context.SendJSON(200, "Data")
+	})
+	
+	engine.Run(":8080")
+}
+
+````
+
+### Important Note: You need to provide right params type for publish function. For example, if you are using Kafka, you need to provide `dyffiBroker.KafkaParams{}` as params. You can use any params inside this struct which is supported for chosen broker.
+
+### Supported Brokers:
+- **Kafka** - [Kafka](https://kafka.apache.org/)
+- **RabbitMQ** - [RabbitMQ](https://www.rabbitmq.com/)
+- **Nats** - [Nats](https://nats.io/)
 
 ---
 
