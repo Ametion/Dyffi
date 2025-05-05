@@ -24,7 +24,8 @@ type Engine struct {
 
 	broker       *dyffiBroker.Queue
 	brokerConfig dyffiBroker.BrokerConfig
-	authConf     interface{}
+	authConf     any
+	services map[reflect.Type]reflect.Value
 }
 
 // NewDyffiEngine creates a new Engine
@@ -33,6 +34,7 @@ func NewDyffiEngine() *Engine {
 		development:  false,
 		isCors:       false,
 		graphqlUsage: false,
+		services:     make(map[reflect.Type]reflect.Value),
 	}
 }
 
@@ -59,15 +61,13 @@ func (g *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	requestParts := strings.Split(r.URL.Path, "/")
 	statusCode := http.StatusNotFound
-	params := make(map[string]pathPart)
 
 	for _, route := range g.routes {
 		if r.Method == route.method && len(requestParts) == len(route.parts) {
 			if g.matchRoute(route, requestParts) {
 				if ctx := g.processRoute(route, w, r, requestParts); ctx != nil {
 					statusCode = http.StatusOK
-					params = ctx.params
-					g.logRequest(r.Method, statusCode, r.URL.Path, params)
+					g.logRequest(r.Method, statusCode, r.URL.Path, ctx.params)
 					ctx.Next()
 					return
 				}
@@ -105,38 +105,53 @@ func (g *Engine) matchRoute(route Route, requestParts []string) bool {
 	return true
 }
 
-func (g *Engine) IsDevelopment() {
+func (g *Engine) Provide(svc any) {
+    v := reflect.ValueOf(svc)
+    t := v.Type()
+
+    if t.Kind() == reflect.Struct {
+        ptr := reflect.New(t)
+        ptr.Elem().Set(v)
+        g.services[ptr.Type()] = ptr
+        return
+    }
+
+    g.services[t] = v
+}
+
+// SetDevelopment sets development mode
+func (g *Engine) SetDevelopment() {
 	g.development = true
 }
 
 // Get adds a GET route to the engine
-func (g *Engine) Get(path string, handler HandlerFunc) {
-	g.addRoute("GET", path, handler, nil, nil)
+func (g *Engine) Get(path string, handler any) {
+	g.addInjectedRoute("GET", path, handler)
 }
 
 // Post adds a POST route to the engine
-func (g *Engine) Post(path string, handler HandlerFunc) {
-	g.addRoute("POST", path, handler, nil, nil)
+func (g *Engine) Post(path string, handler any) {
+	g.addInjectedRoute("POST", path, handler)
 }
 
 // Patch adds a PATCH route to the engine
-func (g *Engine) Patch(path string, handler HandlerFunc) {
-	g.addRoute("PATCH", path, handler, nil, nil)
+func (g *Engine) Patch(path string, handler any) {
+	g.addInjectedRoute("PATCH", path, handler)
 }
 
 // Put adds a PUT route to the engine
-func (g *Engine) Put(path string, handler HandlerFunc) {
-	g.addRoute("PUT", path, handler, nil, nil)
+func (g *Engine) Put(path string, handler any) {
+	g.addInjectedRoute("PUT", path, handler)
 }
 
 // Delete adds a DELETE route to the engine
-func (g *Engine) Delete(path string, handler HandlerFunc) {
-	g.addRoute("DELETE", path, handler, nil, nil)
+func (g *Engine) Delete(path string, handler any) {
+	g.addInjectedRoute("DELETE", path, handler)
 }
 
 // Options adds a OPTIONS route to the engine
-func (g *Engine) Options(path string, handler HandlerFunc) {
-	g.addRoute("OPTIONS", path, handler, nil, nil)
+func (g *Engine) Options(path string, handler any) {
+	g.addInjectedRoute("OPTIONS", path, handler)
 }
 
 // GraphQLModel creates a GraphQL route
@@ -215,73 +230,112 @@ func (g *Engine) Run(addr string) error {
 	return http.ListenAndServe(addr, g)
 }
 
-// generateGraphQLSchema generates a GraphQL schema from a model and resolvers
+func (g *Engine) wrapResolver(fn interface{}) graphql.FieldResolveFn {
+    hv := reflect.ValueOf(fn)
+    ht := hv.Type()
+    ctxT := reflect.TypeOf(QLContext{})
+
+    if ht.Kind() != reflect.Func || ht.NumIn() == 0 || ht.In(0) != ctxT {
+        panic("resolver must be func(QLContext, …) (T, error)")
+    }
+    if ht.NumOut() != 2 || !ht.Out(1).Implements(reflect.TypeOf((*error)(nil)).Elem()) {
+        panic("resolver must return (T, error)")
+    }
+
+    // PRE-RESOLVE extra deps beyond QLContext
+    deps := make([]reflect.Value, ht.NumIn()-1)
+    for i := 1; i < ht.NumIn(); i++ {
+        depT := ht.In(i)
+        svc, ok := g.services[depT]
+        if !ok && depT.Kind() == reflect.Interface {
+            for _, cand := range g.services {
+                if cand.Type().Implements(depT) {
+                    svc = cand
+                    ok = true
+                    break
+                }
+            }
+        }
+        if !ok {
+            panic(fmt.Sprintf("no service registered for resolver dep %v", depT))
+        }
+        deps[i-1] = svc
+    }
+
+    return func(p graphql.ResolveParams) (interface{}, error) {
+        qctx := QLContext{Params: p}
+        args := make([]reflect.Value, 1+len(deps))
+        args[0] = reflect.ValueOf(qctx)
+        copy(args[1:], deps)
+
+        out := hv.Call(args)
+        result := out[0].Interface()
+        var err error
+        if e, _ := out[1].Interface().(error); e != nil {
+            err = e
+        }
+        return result, err
+    }
+}
+
+// generateGraphQLSchema builds your schema and plugs in wrapResolver for each resolver
 func (g *Engine) generateGraphQLSchema() *graphql.Schema {
-	queryFields := graphql.Fields{}
-	mutationFields := graphql.Fields{}
+    queryFields := graphql.Fields{}
+    mutationFields := graphql.Fields{}
 
-	for modelName, model := range g.graphqlSchemas {
-		modelType := model.ModelType
+    for modelName, model := range g.graphqlSchemas {
+        modelType := model.ModelType
 
-		// Generate object type
-		fields := graphql.Fields{}
-		for i := 0; i < modelType.NumField(); i++ {
-			field := modelType.Field(i)
-			fields[field.Name] = &graphql.Field{Type: g.goTypeToGraphQL(field.Type)}
-		}
+        // build object type
+        fields := graphql.Fields{}
+        for i := 0; i < modelType.NumField(); i++ {
+            f := modelType.Field(i)
+            fields[f.Name] = &graphql.Field{Type: g.goTypeToGraphQL(f.Type)}
+        }
+        objectType := graphql.NewObject(graphql.ObjectConfig{
+            Name:   modelName,
+            Fields: fields,
+        })
 
-		objectType := graphql.NewObject(graphql.ObjectConfig{
-			Name:   modelName,
-			Fields: fields,
-		})
+        // Query resolver
+        if model.Resolvers.Query != nil {
+            queryFields["get"+modelName] = &graphql.Field{
+                Type:    objectType,
+                Args:    graphql.FieldConfigArgument{"id": &graphql.ArgumentConfig{Type: graphql.Int}},
+                Resolve: g.wrapResolver(model.Resolvers.Query),
+            }
+        }
 
-		// Query Resolver
-		if model.Resolvers.Query != nil {
-			queryFields["get"+modelName] = &graphql.Field{
-				Type: objectType,
-				Args: graphql.FieldConfigArgument{"id": &graphql.ArgumentConfig{Type: graphql.Int}},
-				Resolve: func(params graphql.ResolveParams) (interface{}, error) {
-					return model.Resolvers.Query(QLContext{Params: params})
-				},
-			}
-		}
+        // Create mutation
+        if model.Resolvers.MutationCreate != nil {
+            mutationFields["create"+modelName] = &graphql.Field{
+                Type:    objectType,
+                Args:    fieldsToArgs(fields),
+                Resolve: g.wrapResolver(model.Resolvers.MutationCreate),
+            }
+        }
 
-		// Create Mutation Resolver
-		if model.Resolvers.MutationCreate != nil {
-			mutationFields["create"+modelName] = &graphql.Field{
-				Type: objectType,
-				Args: fieldsToArgs(fields),
-				Resolve: func(params graphql.ResolveParams) (interface{}, error) {
-					return model.Resolvers.MutationCreate(QLContext{Params: params})
-				},
-			}
-		}
+        // Delete mutation
+        if model.Resolvers.MutationDelete != nil {
+            mutationFields["delete"+modelName] = &graphql.Field{
+                Type: graphql.NewObject(graphql.ObjectConfig{
+                    Name: "DeleteResponse",
+                    Fields: graphql.Fields{
+                        "message": &graphql.Field{Type: graphql.String},
+                        "ID":      &graphql.Field{Type: graphql.Int},
+                    },
+                }),
+                Args:    graphql.FieldConfigArgument{"id": &graphql.ArgumentConfig{Type: graphql.Int}},
+                Resolve: g.wrapResolver(model.Resolvers.MutationDelete),
+            }
+        }
+    }
 
-		// Delete Mutation Resolver
-		if model.Resolvers.MutationDelete != nil {
-			mutationFields["delete"+modelName] = &graphql.Field{
-				Type: graphql.NewObject(graphql.ObjectConfig{
-					Name: "DeleteResponse",
-					Fields: graphql.Fields{
-						"message": &graphql.Field{Type: graphql.String},
-						"ID":      &graphql.Field{Type: graphql.Int},
-					},
-				}),
-				Args: graphql.FieldConfigArgument{"id": &graphql.ArgumentConfig{Type: graphql.Int}},
-				Resolve: func(params graphql.ResolveParams) (interface{}, error) {
-					return model.Resolvers.MutationDelete(QLContext{Params: params})
-				},
-			}
-		}
-	}
-
-	// Generate Final Schema
-	schema, _ := graphql.NewSchema(graphql.SchemaConfig{
-		Query:    graphql.NewObject(graphql.ObjectConfig{Name: "Query", Fields: queryFields}),
-		Mutation: graphql.NewObject(graphql.ObjectConfig{Name: "Mutation", Fields: mutationFields}),
-	})
-
-	return &schema
+    schema, _ := graphql.NewSchema(graphql.SchemaConfig{
+        Query:    graphql.NewObject(graphql.ObjectConfig{Name: "Query", Fields: queryFields}),
+        Mutation: graphql.NewObject(graphql.ObjectConfig{Name: "Mutation", Fields: mutationFields}),
+    })
+    return &schema
 }
 
 // processGraphQLRequest processes a GraphQL request
@@ -387,6 +441,50 @@ func (g *Engine) processRoute(route Route, w http.ResponseWriter, r *http.Reques
 
 	return ctx
 }
+
+func (g *Engine) addInjectedRoute(method, path string, handler interface{}) {
+    hv := reflect.ValueOf(handler)
+    ht := hv.Type()
+    ctxT := reflect.TypeOf(&Context{})
+
+    if ht.Kind() != reflect.Func ||
+       ht.NumIn() == 0 ||
+       ht.In(0) != ctxT {
+        panic("handler must be func(*Context, …)")
+    }
+
+    deps := make([]reflect.Value, ht.NumIn()-1)
+    for i := 1; i < ht.NumIn(); i++ {
+        depT := ht.In(i)
+
+        svc, ok := g.services[depT]
+
+        if !ok && depT.Kind() == reflect.Interface {
+            for _, candidate := range g.services {
+                if candidate.Type().Implements(depT) {
+                    svc = candidate
+                    ok = true
+                    break
+                }
+            }
+        }
+
+        if !ok {
+            panic(fmt.Sprintf("no service registered for %v", depT))
+        }
+        deps[i-1] = svc
+    }
+
+    wrapper := func(c *Context) {
+        args := make([]reflect.Value, 1+len(deps))
+        args[0] = reflect.ValueOf(c)
+        copy(args[1:], deps)
+        hv.Call(args)
+    }
+
+    g.addRoute(method, path, wrapper, nil, nil)
+}
+
 
 // addRoute adds a route to the engine
 func (g *Engine) addRoute(method string, path string, handler HandlerFunc, middleware []MiddlewareFunc, group *RouteGroup) {

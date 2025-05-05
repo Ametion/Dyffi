@@ -15,7 +15,7 @@ func main() {
 
 	engine.UseCors(cors) // Enable CORS middleware
 
-	engine.IsDevelopment()
+	engine.SetDevelopment()
 
 	engine.Get("/test", func(context *dyffi.Context) {
 		context.SendJSON(200, "Hello World")

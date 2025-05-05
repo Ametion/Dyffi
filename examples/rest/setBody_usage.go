@@ -13,7 +13,7 @@ type User struct {
 func main() {
 	engine := dyffi.NewDyffiEngine()
 
-	engine.IsDevelopment()
+	engine.SetDevelopment()
 
 	engine.Post("/test", func(context *dyffi.Context) {
 		var body User

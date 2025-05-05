@@ -7,7 +7,7 @@ import (
 func main() {
 	engine := dyffi.NewDyffiEngine()
 
-	engine.IsDevelopment()
+	engine.SetDevelopment()
 
 	//Register GraphQL Model (no need to manually register /graphql)
 	engine.GraphQLModel("Post", Post{}, dyffi.GraphQLResolvers{

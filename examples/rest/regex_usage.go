@@ -8,7 +8,7 @@ import (
 func main() {
 	engine := dyffi.NewDyffiEngine()
 
-	engine.IsDevelopment()
+	engine.SetDevelopment()
 
 	// Example of using regex in route parameters, this route will only match if the id is a number, and you need to write whole regex pattern inside brackets
 	engine.Get("/user/:id(^/d+$)", func(c *dyffi.Context) {

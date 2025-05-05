@@ -1,2 +1,7 @@
 .idea
 test
+for_test
+.vscode
+tmp
+.idx
+.air.toml

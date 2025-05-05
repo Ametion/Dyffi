@@ -18,7 +18,7 @@ func main() {
 
 	engine := dyffi.NewDyffiEngine()
 	engine.UseBroker(brokerConf)
-	engine.IsDevelopment()
+	engine.SetDevelopment()
 
 	engine.Post("/publish", func(context *dyffi.Context) {
 

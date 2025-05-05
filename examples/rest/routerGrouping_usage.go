@@ -8,7 +8,7 @@ import (
 func main() {
 	engine := dyffi.NewDyffiEngine()
 
-	engine.IsDevelopment()
+	engine.SetDevelopment()
 
 	api := engine.Group("/api")
 

@@ -44,7 +44,7 @@ func main() {
 	engine := dyffi.NewDyffiEngine()
 
 	// Enable development mode for logging
-	engine.IsDevelopment()
+	engine.SetDevelopment()
 
 	// Define REST routes
 	engine.Get("/hello", func(c *dyffi.Context) {
@@ -239,7 +239,7 @@ func main() {
 
 	engine.UseBroker(brokerConf)
 
-	engine.IsDevelopment()
+	engine.SetDevelopment()
 
 	engine.Post("/someRoute", func(context *dyffi.Context) {
 		//This line will send message "test message" to Kafka "test_topic" topic, note, it will not automatically create topic!.
@@ -345,7 +345,7 @@ engine.Get("/user/:id", func(c *dyffi.Context) {
 
 # Development Logging
 
-When **development mode** is enabled (`engine.IsDevelopment()`), Dyffi logs:
+When **development mode** is enabled (`engine.SetDevelopment()`), Dyffi logs:
 - **Date & Time**
 - **HTTP Method**
 - **Status Code** (color-coded)

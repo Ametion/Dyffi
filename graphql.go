@@ -10,10 +10,10 @@ type GraphQLResolverFunc func(QLContext) (interface{}, error)
 
 // GraphQLResolvers holds all GraphQL resolvers
 type GraphQLResolvers struct {
-	Query          GraphQLResolverFunc
-	MutationCreate GraphQLResolverFunc
-	MutationUpdate GraphQLResolverFunc
-	MutationDelete GraphQLResolverFunc
+	Query          any
+	MutationCreate any
+	MutationUpdate any
+	MutationDelete any
 }
 
 // GraphQLRoute holds a GraphQL schema and resolvers

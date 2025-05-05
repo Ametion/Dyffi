@@ -8,7 +8,7 @@ import (
 func main() {
 	engine := dyffi.NewDyffiEngine()
 
-	engine.IsDevelopment()
+	engine.SetDevelopment()
 
 	engine.UseMiddleware(Middleware) // Enable custom middleware
 
