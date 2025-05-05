@@ -24,7 +24,7 @@ type Engine struct {
 
 	broker       *dyffiBroker.Queue
 	brokerConfig dyffiBroker.BrokerConfig
-	authConf     any
+	authConf     Authorization
 	services map[reflect.Type]reflect.Value
 }
 

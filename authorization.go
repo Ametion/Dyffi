@@ -17,6 +17,10 @@ const (
 	BASIC  AuthType = "Basic"
 )
 
+type Authorization interface {
+    authorize(c *Context)
+}
+
 // APIAuthorization holds your global auth settings.
 type APIAuthorization struct {
 	AuthorizationType AuthType
@@ -46,7 +50,7 @@ type BasicAuth struct {
 //	engine.Authorization(auth, authConf)
 //
 // where 'auth' is an APIAuthorization, and 'authConf' is either JWTAuth or APIKeyAuth, etc.
-func (g *Engine) Authorization(auth APIAuthorization, conf interface{}) {
+func (g *Engine) Authorization(auth APIAuthorization, conf Authorization) {
 	g.authConf = conf
 
 	// Attach the global middleware
@@ -59,40 +63,12 @@ func (g *Engine) Authorization(auth APIAuthorization, conf interface{}) {
 			}
 		}
 
-		switch auth.AuthorizationType {
-		case JWT:
-			jwtConf, ok := conf.(JWTAuth)
-			if !ok {
-				http.Error(c.writer, "Invalid JWT configuration", http.StatusInternalServerError)
-				return
-			}
-			handleJWTAuth(c, jwtConf)
-
-		case APIKEY:
-			apiKeyConf, ok := conf.(APIKeyAuth)
-			if !ok {
-				http.Error(c.writer, "Invalid APIKey configuration", http.StatusInternalServerError)
-				return
-			}
-			handleAPIKeyAuth(c, apiKeyConf)
-
-		case BASIC:
-			basicConf, ok := conf.(BasicAuth)
-			if !ok {
-				http.Error(c.writer, "Invalid BasicAuth configuration", http.StatusInternalServerError)
-				return
-			}
-			handleBasicAuth(c, basicConf)
-
-		default:
-			http.Error(c.writer, "Unsupported authorization type", http.StatusForbidden)
-			return
-		}
+		conf.authorize(c)
 	})
 }
 
 // handleJWTAuth is the actual JWT-check logic.
-func handleJWTAuth(c *Context, conf JWTAuth) {
+func (auth JWTAuth) authorize(c *Context) {
 	tokenHeader := c.request.Header.Get("Authorization")
 	if tokenHeader == "" {
 		http.Error(c.writer, "Missing Authorization header", http.StatusUnauthorized)
@@ -111,7 +87,7 @@ func handleJWTAuth(c *Context, conf JWTAuth) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-		return []byte(conf.JWTSecret), nil
+		return []byte(auth.JWTSecret), nil
 	})
 
 	if err != nil || !token.Valid {
@@ -125,9 +101,9 @@ func handleJWTAuth(c *Context, conf JWTAuth) {
 }
 
 // handleAPIKeyAuth is the actual API key check logic.
-func handleAPIKeyAuth(c *Context, conf APIKeyAuth) {
+func (auth APIKeyAuth) authorize(c *Context) {
 	apiKey := c.request.Header.Get("X-API-KEY")
-	if apiKey == "" || apiKey != conf.APIKey {
+	if apiKey == "" || apiKey != auth.APIKey {
 		http.Error(c.writer, "Invalid API Key", http.StatusUnauthorized)
 		c.Abort()
 	}
@@ -135,9 +111,9 @@ func handleAPIKeyAuth(c *Context, conf APIKeyAuth) {
 }
 
 // handleBasicAuth is the actual basic auth check logic.
-func handleBasicAuth(c *Context, conf BasicAuth) {
+func (auth BasicAuth) authorize(c *Context) {
 	username, password, ok := c.request.BasicAuth()
-	if !ok || username != conf.Username || password != conf.Password {
+	if !ok || username != auth.Username || password != auth.Password {
 		http.Error(c.writer, "Invalid credentials", http.StatusUnauthorized)
 		c.Abort()
 	}
