@@ -114,5 +114,10 @@ func (c *Context) SetBody(v interface{}) error {
 func (c *Context) SendJSON(statusCode int, v interface{}) {
 	c.writer.Header().Set("Content-Type", "application/json")
 	c.writer.WriteHeader(statusCode)
-	json.NewEncoder(c.writer).Encode(v)
+	err := json.NewEncoder(c.writer).Encode(v)
+
+	if err != nil {
+		c.writer.WriteHeader(http.StatusInternalServerError)
+		c.writer.Write([]byte("error while trying to encode json: " + err.Error()))
+	}
 }

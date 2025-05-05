@@ -2,12 +2,14 @@ package dyffi
 
 import (
 	"fmt"
-	dyffiBroker "github.com/Ametion/dyffi/broker"
-	"github.com/graphql-go/graphql"
 	"net/http"
 	"reflect"
 	"regexp"
+	"runtime/debug"
 	"strings"
+
+	dyffiBroker "github.com/Ametion/dyffi/broker"
+	"github.com/graphql-go/graphql"
 )
 
 // Engine represents the main engine of the web server
@@ -65,10 +67,11 @@ func (g *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for _, route := range g.routes {
 		if r.Method == route.method && len(requestParts) == len(route.parts) {
 			if g.matchRoute(route, requestParts) {
-				if ctx := g.processRoute(route, w, r, requestParts); ctx != nil {
-					statusCode = http.StatusOK
-					g.logRequest(r.Method, statusCode, r.URL.Path, ctx.params)
+				sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+
+				if ctx := g.processRoute(route, sw, r, requestParts); ctx != nil {
 					ctx.Next()
+					g.logRequest(r.Method, sw.status, r.URL.Path, ctx.params)
 					return
 				}
 			}
@@ -105,6 +108,14 @@ func (g *Engine) matchRoute(route Route, requestParts []string) bool {
 	return true
 }
 
+func (g *Engine) Handle(method, path string, h http.Handler) {
+    wrapper := func(c *Context) {
+        h.ServeHTTP(c.writer, c.request)
+    }
+    g.addRoute(method, path, wrapper, nil, nil)
+}
+
+
 func (g *Engine) Provide(svc any) {
     v := reflect.ValueOf(svc)
     t := v.Type()
@@ -126,32 +137,79 @@ func (g *Engine) SetDevelopment() {
 
 // Get adds a GET route to the engine
 func (g *Engine) Get(path string, handler any) {
-	g.addInjectedRoute("GET", path, handler)
+	switch h := handler.(type) {
+		//if it’s already a real http.Handler, mount it directly
+		case http.Handler:
+			g.Handle("GET", path, h)
+	
+		//or if it’s the classic func(w, r), turn it into a HandlerFunc
+		case func(http.ResponseWriter, *http.Request):
+			g.Handle("GET", path, http.HandlerFunc(h))
+	
+		//otherwise assume it’s one of your DI-style funcs
+		default:
+			g.addInjectedRoute("GET", path, handler)
+	}
 }
 
 // Post adds a POST route to the engine
 func (g *Engine) Post(path string, handler any) {
-	g.addInjectedRoute("POST", path, handler)
+    switch h := handler.(type) {
+    case http.Handler:
+        g.Handle("POST", path, h)
+    case func(http.ResponseWriter, *http.Request):
+        g.Handle("POST", path, http.HandlerFunc(h))
+    default:
+        g.addInjectedRoute("POST", path, handler)
+    }
 }
 
 // Patch adds a PATCH route to the engine
 func (g *Engine) Patch(path string, handler any) {
-	g.addInjectedRoute("PATCH", path, handler)
+    switch h := handler.(type) {
+    case http.Handler:
+        g.Handle("PATCH", path, h)
+    case func(http.ResponseWriter, *http.Request):
+        g.Handle("PATCH", path, http.HandlerFunc(h))
+    default:
+        g.addInjectedRoute("PATCH", path, handler)
+    }
 }
 
 // Put adds a PUT route to the engine
 func (g *Engine) Put(path string, handler any) {
-	g.addInjectedRoute("PUT", path, handler)
+    switch h := handler.(type) {
+    case http.Handler:
+        g.Handle("PUT", path, h)
+    case func(http.ResponseWriter, *http.Request):
+        g.Handle("PUT", path, http.HandlerFunc(h))
+    default:
+        g.addInjectedRoute("PUT", path, handler)
+    }
 }
 
 // Delete adds a DELETE route to the engine
 func (g *Engine) Delete(path string, handler any) {
-	g.addInjectedRoute("DELETE", path, handler)
+    switch h := handler.(type) {
+    case http.Handler:
+        g.Handle("DELETE", path, h)
+    case func(http.ResponseWriter, *http.Request):
+        g.Handle("DELETE", path, http.HandlerFunc(h))
+    default:
+        g.addInjectedRoute("DELETE", path, handler)
+    }
 }
 
 // Options adds a OPTIONS route to the engine
 func (g *Engine) Options(path string, handler any) {
-	g.addInjectedRoute("OPTIONS", path, handler)
+    switch h := handler.(type) {
+    case http.Handler:
+        g.Handle("OPTIONS", path, h)
+    case func(http.ResponseWriter, *http.Request):
+        g.Handle("OPTIONS", path, http.HandlerFunc(h))
+    default:
+        g.addInjectedRoute("OPTIONS", path, handler)
+    }
 }
 
 // GraphQLModel creates a GraphQL route
@@ -227,6 +285,25 @@ func (g *Engine) Run(addr string) error {
 	}
 
 	fmt.Printf("\n\033[1;36mListening on %s\033[0m\n\n", addr) // Cyan color for "Listening"
+
+	//On start setuping recovery middleware
+	g.UseMiddleware(func(c *Context) {
+		defer func() {
+			if err := recover(); err != nil {
+				//logging the panic
+				fmt.Printf("panic in handler: %v\n%s", err, debug.Stack())
+	
+				c.SendJSON(http.StatusInternalServerError, map[string]string{
+					"error": "internal server error",
+				})
+	
+				c.Abort()
+			}
+		}()
+	
+		c.Next()
+	})
+
 	return http.ListenAndServe(addr, g)
 }
 
@@ -405,7 +482,7 @@ func (g *Engine) processRoute(route Route, w http.ResponseWriter, r *http.Reques
 						matched, regexErr := regexp.MatchString(temp.regexPattern, requestParts[i])
 
 						if !matched || regexErr != nil {
-							w.WriteHeader(http.StatusBadRequest)
+							w.WriteHeader(http.StatusInternalServerError)
 							w.Write([]byte("Regex not matched"))
 							return nil
 						}

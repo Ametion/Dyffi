@@ -2,6 +2,7 @@ package dyffi
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -69,4 +70,14 @@ func getStatusColor(status int) string {
 		return "\033[1;33m" // Yellow for 4xx Client Errors
 	}
 	return "\033[1;31m" // Red for 5xx Server Errors
+}
+
+type statusWriter struct {
+    http.ResponseWriter
+    status int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+    w.status = code
+    w.ResponseWriter.WriteHeader(code)
 }
