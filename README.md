@@ -155,6 +155,39 @@ mutation CreatePost {
 
 ---
 
+# **Dependency Injection**
+
+#### Dyffi now fully supports ASP.NET/NestJS-style **Dependency Injection**. Just put interface (expected behaiour) into handlers params, and provide implemented struct into engine, Dyffi will do everything by it self.
+
+### **Example**
+
+```go
+//YOUR INTERFACE
+type IRepository interface {
+    GetUserByID(id int) string
+}
+
+type Repository struct { }
+
+func (repo *Repository) GetUserByID(id int) string {
+    return "User with id " + strconv.Itoa(id)
+}
+
+func main() {
+    engine := dyffi.NewDyffiEngine()
+
+    //GIVING ROUTER IMPLMENTED STRUCT
+    engine.Provide(Repository{})
+    
+    //USING THIS STRUCT INSIDE HANDLER
+    engine.Get("/test", func(context *dyffi.Context, repository IRepository) {
+        context.SendJSON(200, repository.GetUserByID(1))
+    })
+
+    engine.Run(":8080")
+}
+```
+
 # **Auto Authentication System**
 
 #### Dyffi now supports **automatic authentication** middleware, allowing you to secure routes with **JWT tokens**, **API keys**, and **Basic Auth**.
@@ -265,6 +298,17 @@ func main() {
 - **Nats** - [Nats](https://nats.io/)
 
 ---
+
+# **Default net/http Handlers**
+
+You can provide default net/http handlers like ```func(http.ResponseWriter, *http.Request)``` or ```http.Handler``` and use it normally alongside with classic Dyffi Handlers
+
+[Full Example](https://github.com/Ametion/Dyffi/tree/dev/examples/rest/defaultHandlers_usage.go]
+```go
+engine.Get("/default", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("some  string"))
+})
+```
 
 # **Middleware**
 
