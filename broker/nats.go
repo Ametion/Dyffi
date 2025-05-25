@@ -34,7 +34,6 @@ func (n *natsBroker) Publish(topic string, message []byte, params DefaultParams)
 
 	nc, err := nats.Connect(dns)
 	if err != nil {
-		fmt.Printf("Failed to connect to NATS: %v", err)
 		return err
 	}
 	defer nc.Close()
@@ -57,7 +56,6 @@ func (n *natsBroker) Publish(topic string, message []byte, params DefaultParams)
 	}
 
 	if err != nil {
-		fmt.Printf("Failed to publish message to NATS: %v", err)
 		return err
 	}
 

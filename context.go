@@ -3,10 +3,12 @@ package dyffi
 import (
 	"encoding/json"
 	"fmt"
-	dyffiBroker "github.com/Ametion/dyffi/broker"
-	"github.com/dgrijalva/jwt-go"
 	"net/http"
 	"time"
+
+	dyffiBroker "github.com/Ametion/dyffi/broker"
+	"github.com/Ametion/dyffi/logging"
+	"github.com/dgrijalva/jwt-go"
 )
 
 type JWTClaims struct {
@@ -19,6 +21,7 @@ type Context struct {
 	writer                     http.ResponseWriter
 	request                    *http.Request
 	Headers                    http.Header
+	Logger                     logging.ILogger
 	aborted                    bool
 	params                     map[string]pathPart
 	index                      int

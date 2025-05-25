@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/graphql-go/graphql"
 )
-
+//TODO: Add more fields into QLContext
 // QLContext is a wrapper for GraphQL ResolveParams
 type QLContext struct {
 	Params graphql.ResolveParams

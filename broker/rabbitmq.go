@@ -35,14 +35,12 @@ func (r *rabbitMQBroker) Publish(topic string, message []byte, params DefaultPar
 
 	conn, err := amqp.Dial(dns)
 	if err != nil {
-		fmt.Printf("Failed to connect to RabbitMQ: %v", err)
 		return err
 	}
 	defer conn.Close()
 
 	ch, err := conn.Channel()
 	if err != nil {
-		fmt.Printf("Failed to open a channel: %v", err)
 		return err
 	}
 	defer ch.Close()
@@ -56,7 +54,6 @@ func (r *rabbitMQBroker) Publish(topic string, message []byte, params DefaultPar
 		nil,
 	)
 	if err != nil {
-		fmt.Printf("Failed to declare a BrokerType: %v", err)
 		return err
 	}
 
@@ -102,7 +99,6 @@ func (r *rabbitMQBroker) Publish(topic string, message []byte, params DefaultPar
 		},
 	)
 	if err != nil {
-		fmt.Printf("Failed to publish message: %v", err)
 		return err
 	}
 
